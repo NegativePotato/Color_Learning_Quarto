@@ -92,8 +92,8 @@ clc_part_1_forTEFits_asympt_perf <- clc_part_1_forTEFits_asympt_perf.df %>%
 
 # Simulation parameters
 n_chains <- 4
-n_cores <- 1
-n_iter <- 200
+n_cores <- 4
+n_iter <- 10000
 
 mod1 <- TEbrm(train_response_distance_idx ~ 
                 tef_change_expo3('trials_train.thisTrialN',
@@ -102,8 +102,8 @@ mod1 <- TEbrm(train_response_distance_idx ~
   # the following are all arguments directly to the `brm()` function call:
   data = clc_part_1_forTEFits.df,
   family = exgaussian(),
-  chains = n_chains, 
-  cores = n_cores, # At least 2 chains would be necessary for trustworthy inferences
+  chains = n_chains, # At least 2 chains would be necessary for trustworthy inferences
+  cores = n_cores, 
   iter = n_iter,
   control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
 )
@@ -118,6 +118,6 @@ mod1_for_plot.df <- data.frame(
   trial_num = mod1$data$trials_train.thisTrialN,
   estimate = mod1$pred_err[,'Estimate'])
 
-ggplot
+saveRDS(object = mod1, file = file.path('Data', 'tefits_exp_model.rds'))
 
 ```
