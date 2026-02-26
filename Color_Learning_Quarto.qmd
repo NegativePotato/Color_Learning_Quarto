@@ -1,11 +1,400 @@
 ---
-title: "Color_Learning_Quarto"
+title: "MOT_Sequence_Target_Density"
+author: "Freya Joessel"
+editor: source
+date: today
+toc: true
+toc-depth: 5
+# toc-expand: true
+number-sections: true
+highlight-style: pygments
+toc-location: left
+reference-location: margin
+citation-location: margin
+format:
+  html: 
+    code-fold: true
+    html-math-method: katex
 ---
 
-## Quarto
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+```{r preamble}
+#| echo: false
+#| include: false
 
-```{r}
-1 + 1
+library(dplyr)
+library(progress)
+library(ggplot2)
+library(purrr)
+library(Hmisc)
+library(TEfits)
+library(brms)
+# librarbrms# library(parallel)
+
 ```
+
+
+
+```{r load-data}
+#| echo: false
+#| cache: true
+#| include: false
+
+clc_raw.df <- read.csv(file = "Data/psychopy_raw.csv") %>% 
+  select(-X)
+
+clc_part_1_raw.df <- clc_raw.df %>% 
+  filter(!is.na(trials_train.thisN))
+
+clc_part_2_raw.df <- read.csv(file = "Data/psychopy_part2_df.csv") %>% 
+  select(-X)
+
+```
+
+```{r filter-non-learners}
+#| echo: false
+#| cache: false
+#| include: false
+
+clc_part_1_n_trials.df <- clc_part_1_raw.df %>% 
+  count(Participant_ID, name = "n_trials") 
+
+clc_part_1_n_trials.plot <- ggplot() + 
+  geom_histogram(data = clc_part_1_n_trials.df,
+                 aes(x = n_trials))
+clc_part_1_n_trials.plot
+
+clc_part_1_n_trials_violin.plot <- ggplot() + 
+  geom_violin(data = clc_part_1_n_trials.df,
+              aes(x = 1, y = n_trials)) + 
+  geom_point(data = clc_part_1_n_trials.df,
+              aes(x = 1, y = n_trials))
+clc_part_1_n_trials_violin.plot
+
+clc_part_1_n_trials_boxplot.plot <- ggplot() + 
+  geom_boxplot(data = clc_part_1_n_trials.df,
+              aes(x = 1, y = n_trials))
+  # geom_point(data = clc_part_1_n_trials.df,
+  #             aes(x = 1, y = n_trials))
+clc_part_1_n_trials_boxplot.plot
+
+clc_part_1_n_trials_log.plot <- ggplot() + 
+  geom_histogram(data = clc_part_1_n_trials.df,
+                 aes(x = log(n_trials)))
+clc_part_1_n_trials_log.plot
+
+# Remove Outliers
+n_trials_outliers <- boxplot.stats(clc_part_1_n_trials.df$n_trials)$out
+
+clc_part_1_n_trials_with_learner_status.df <- clc_part_1_n_trials.df %>% 
+  mutate(is_learner = ifelse(n_trials %in% n_trials_outliers, 
+                             "non-learner", "learner"))
+
+clc_part_1_with_learner_status.df <- clc_part_1_raw.df %>% 
+  merge(clc_part_1_n_trials_with_learner_status.df)
+
+clc_part_1_non_learners.df <- clc_part_1_with_learner_status.df %>% 
+  filter(is_learner == "non-learner")
+
+clc_part_1_only_learners.df <- clc_part_1_with_learner_status.df %>% 
+  filter(is_learner == "learner")
+
+print(unique(clc_part_1_non_learners.df$Participant_ID))
+
+```
+
+```{r individual-learning-curves-part-1}
+#| echo: false
+#| cache: false
+#| include: false
+
+colors_4_exemplars <- c('purple', 'violet', 'orange', 'gold')
+
+learning_curves_part_1.plot <- ggplot() + 
+  geom_line(data = clc_part_1_only_learners.df, 
+            aes(x = trials_train.thisTrialN, 
+                y = train_response_distance_idx, 
+                color = color_name)) + 
+  scale_color_manual(values = colors_4_exemplars) + 
+  facet_wrap(facets = "Participant_ID", scales = "free_x")
+learning_curves_part_1.plot
+
+```
+
+```{r group-level-learning-curves-part-1}
+#| echo: false
+#| cache: false
+#| include: false
+
+clc_part_1_per_group.df <- clc_part_1_only_learners.df %>% 
+  group_by(condition_str, trials_train.thisTrialN) %>% 
+  summarize(mean_error_idx = mean(train_response_distance_idx))
+
+clc_part_1_per_group_truncated.df <- clc_part_1_per_group.df %>% 
+  filter(trials_train.thisTrialN < 200)
+
+learning_curves_per_group_part_1.plot <- ggplot() + 
+  geom_point(data = clc_part_1_per_group.df, 
+            aes(x = trials_train.thisTrialN, 
+                y = mean_error_idx, 
+                color = condition_str), size = 0.5) + 
+  geom_smooth(data = clc_part_1_per_group.df, 
+              aes(x = trials_train.thisTrialN, 
+                  y = mean_error_idx, 
+                  color = condition_str)) + 
+  scale_color_manual(values = c("#0C7BDC", "#FFC20A")) 
+learning_curves_per_group_part_1.plot
+
+learning_curves_per_group_part_1_truncated.plot <- ggplot() + 
+  geom_point(data = clc_part_1_per_group_truncated.df, 
+            aes(x = trials_train.thisTrialN, 
+                y = mean_error_idx, 
+                color = condition_str), size = 0.5) + 
+  geom_smooth(data = clc_part_1_per_group_truncated.df, 
+              aes(x = trials_train.thisTrialN, 
+                  y = mean_error_idx, 
+                  color = condition_str)) + 
+  scale_color_manual(values = c("#0C7BDC", "#FFC20A")) 
+learning_curves_per_group_part_1_truncated.plot
+
+```
+
+```{r group-level-learning-curves-by-color-part-1}
+#| echo: false
+#| cache: false
+#| include: false
+
+clc_part_1_per_group.df <- clc_part_1_only_learners.df %>% 
+  group_by(condition_str, trials_train.thisTrialN, color_name) %>% 
+  summarize(mean_error_idx = mean(train_response_distance_idx))
+
+clc_part_1_per_group_truncated.df <- clc_part_1_per_group.df %>% 
+  filter(trials_train.thisTrialN < 200)
+
+learning_curves_per_group_part_1.plot <- ggplot() + 
+  geom_point(data = clc_part_1_per_group.df, 
+            aes(x = trials_train.thisTrialN, 
+                y = mean_error_idx, 
+                color = condition_str), size = 0.5) + 
+  geom_smooth(data = clc_part_1_per_group.df, 
+              aes(x = trials_train.thisTrialN, 
+                  y = mean_error_idx, 
+                  color = condition_str)) + 
+  facet_wrap(. ~ color_name) + 
+  scale_color_manual(values = c("#0C7BDC", "#FFC20A")) 
+learning_curves_per_group_part_1.plot
+
+```
+
+
+# Number of trials to criterion by color and condition 
+
+```{r n-trials-to-criterion}
+#| echo: false
+#| cache: false
+#| include: false
+
+count_and_threshold <- function(arr, n, k) {
+  # Initialize the output vectors
+  count_true <- rep(NA, length(arr))
+  threshold_array <- rep(NA, length(arr))
+
+  # Loop through each element
+  for (i in 1:length(arr)) {
+    # Define the window: from max(1, i - n + 1) to i
+    start_idx <- max(1, i - n + 1)
+    end_idx <- i
+    window <- arr[start_idx:end_idx]
+
+    # Count the number of TRUEs in the window
+    count_true[i] <- sum(window)
+
+    # Determine the value for the threshold array
+    if (i < n) {
+      threshold_array[i] <- -1
+    } else {
+      threshold_array[i] <- ifelse(count_true[i] == k, 1, 0)
+    }
+  }
+
+  # Return both results as a list
+  list(count_true = count_true, threshold_array = threshold_array)
+}
+
+n_trials_window <- 5
+n_correct_within_window <- 4
+
+clc_part_1_with_learning_criterion.df <- clc_part_1_only_learners.df %>% 
+  select(Participant_ID, condition_str, color_name, trials_train.thisTrialN, 
+         train_response_correct, train_response_distance_idx, train_response_distance_dE) %>% 
+  group_by(Participant_ID, color_name) %>% 
+  mutate(n_correct_in_last_five_trials =
+           count_and_threshold(train_response_correct, n_trials_window, n_correct_within_window)$count_true, 
+         stop_criterion_fulfilled = 
+           count_and_threshold(train_response_correct, n_trials_window, n_correct_within_window)$threshold_array)
+  
+clc_part_1_n_trials_to_learn.df <- clc_part_1_with_learning_criterion.df %>% 
+  group_by(Participant_ID, color_name, condition_str) %>% 
+  summarise(n_trials_to_criterion = which(stop_criterion_fulfilled == 1)[1], .groups = "keep")
+
+clc_part_1_n_trials_to_learn_exclude.df <- clc_part_1_n_trials_to_learn.df %>% 
+  filter(is.na(n_trials_to_criterion))
+clc_part_1_n_trials_to_learn_exclude <- 
+  unique(clc_part_1_n_trials_to_learn_exclude.df$Participant_ID)
+
+clc_part_1_n_trials_to_learn_no_na.df <- clc_part_1_n_trials_to_learn.df %>% 
+  filter(!(Participant_ID %in% clc_part_1_n_trials_to_learn_exclude)) %>% 
+  mutate(color_name = factor(color_name, levels = c("violet", "purple", "orange", "yellow")))
+
+clc_part_1_n_trials_to_learn_no_na_stats.df <- clc_part_1_n_trials_to_learn_no_na.df %>% 
+  group_by(color_name, condition_str) %>% 
+  dplyr::reframe(n_trials_to_criterion_mean = mean(n_trials_to_criterion), 
+                 n_trials_to_criterion_ci95_lower = smean.cl.boot(n_trials_to_criterion)["Lower"], 
+                 n_trials_to_criterion_ci95_upper = smean.cl.boot(n_trials_to_criterion)["Upper"], 
+                 n_trials_to_criterion_sd = sd(n_trials_to_criterion))
+
+clc_part_1_n_trials_to_learn.plot <- ggplot() + 
+  geom_violin(data = clc_part_1_n_trials_to_learn_no_na.df, 
+             aes(x = condition_str, y = n_trials_to_criterion, color = color_name)) + 
+  geom_jitter(data = clc_part_1_n_trials_to_learn_no_na.df, 
+             aes(x = condition_str, y = n_trials_to_criterion, color = color_name),
+             width = 0.1) +
+  geom_errorbar(data = clc_part_1_n_trials_to_learn_no_na_stats.df, 
+                aes(x = condition_str, 
+                    ymin = n_trials_to_criterion_ci95_lower, 
+                    ymax = n_trials_to_criterion_ci95_upper), 
+                width = 0.25, color = "black") +
+  geom_point(data = clc_part_1_n_trials_to_learn_no_na_stats.df, 
+             aes(x = condition_str, y = n_trials_to_criterion_mean), 
+             shape = 4, color = "black", size = 2) + 
+  facet_grid(. ~ color_name) +
+  scale_color_manual(values = colors_4_exemplars)
+clc_part_1_n_trials_to_learn.plot
+
+```
+
+Hypotheses : 
+- Start closer to where colors are in the Dark Far condition 
+-> On trial 1 for each color 
+-> OR look at first block of 8 and second block of 8 because that's when they will have seen all the colors to determine what is light and dark
+- Learn faster in the Dark Far condition
+-> Use TEFits, fix asymptote at a criterion for "perfect", one rate and one start for each participant
+-> We'll know that we're failing to capture some variance linked to the difficulty of the color
+-> EXPLORATORY -> See if models converge when we fit a different model for each color (colors are independent, nested within participants)
+- Specify two models with wieghts shared between them and find the weights thaht best fit the data
+-> Make the generalization plots for all participants at first,
+-> We at least want to characterize it before more analyses
+-> 
+
+
+# Position of the clicks in the first 8 trials vs 8 following trials
+
+```{r click-positions-first-eight-vs-next-eight}
+#| echo: false
+#| cache: false
+#| include: false
+
+colors_4_exemplars_data <- 
+  unique(clc_part_1_only_learners.df %>% 
+           select(color_name, color_position, color)) %>% 
+  rename(color_hex = color) %>% 
+  arrange(color_position) %>% 
+  mutate(color_name = factor(color_name, levels = color_name))
+
+colors_4_exemplars_data_by_condition <- colors_4_exemplars_data %>% 
+  mutate(color_position = 255 - color_position, 
+         condition_str = "Dark Far") %>% 
+  bind_rows(colors_4_exemplars_data %>% mutate(condition_str = "Light Far")) %>% 
+  merge(clc_part_1_first_v_next_eight.df %>% select(trials_train.thisTrialN, condition_str, block, color_name))
+
+clc_part_1_first_v_next_eight.df <- clc_part_1_only_learners.df %>% 
+  filter(trials_train.thisN < 16) %>% 
+  mutate(block = ifelse(trials_train.thisN < 8, "first_eight", "next_eight")) %>%
+  mutate(color_name = factor(color_name, levels = colors_4_exemplars_data$color_name))
+
+clc_part_1_first_v_next_eight.plot <- ggplot() + 
+  geom_violin(data = clc_part_1_first_v_next_eight.df, 
+             aes(x = condition_str, y = train_response_color_index, color = color_name)) + 
+  geom_jitter(data = clc_part_1_first_v_next_eight.df, 
+             aes(x = condition_str, y = train_response_color_index, color = color_name),
+             width = 0.1) +
+  geom_hline(data = colors_4_exemplars_data_by_condition,
+             aes(yintercept = color_position, linetype = condition_str)) +
+  facet_grid(block ~ (trials_train.thisTrialN %% 8)) +
+  scale_color_manual(values = colors_4_exemplars_data$color_hex)
+clc_part_1_first_v_next_eight.plot
+
+```
+
+# Learning rate and starting accuracy 
+
+- Learn faster in the Dark Far condition
+-> Use TEFits, fix asymptote at a criterion for "perfect", one rate and one start for each participant
+-> We know that we're failing to capture some variance linked to the difficulty of the color
+-> EXPLORATORY -> See if models converge when we fit a different model for each color (colors are independent, nested within participants)
+
+```{r TEfits-dataset}
+#| echo: false
+#| cache: false
+#| include: false
+
+clc_part_1_forTEFits.df <- clc_part_1_only_learners.df %>% 
+  select(Participant_ID, condition_str, sequence_type, color_name, 
+         trials_train.thisTrialN, signed_distance_idx, train_response_correct, 
+         train_response_distance_dE, train_response_distance_idx, cohort)
+
+write.csv(clc_part_1_forTEFits.df, file.path("Data", "clc_part_1_forTEFits.csv"))
+saveRDS(clc_part_1_forTEFits.df, file.path("Data", "clc_part_1_forTEFits.rds"))
+
+```
+
+```{r estimate-asymptotic-performance}
+#| echo: false
+#| cache: false
+#| include: false
+
+clc_part_1_forTEFits_asympt_perf.df <- clc_part_1_forTEFits.df %>% 
+  group_by(trials_train.thisTrialN) %>% 
+  mutate(n_participants_at_trial = n()) %>%
+  ungroup() %>% 
+  filter(n_participants_at_trial >= 10) %>% 
+  group_by(trials_train.thisTrialN) %>% 
+  dplyr::summarize(train_response_distance_idx_med = 
+                     median(train_response_distance_idx), 
+                   .groups = "drop")
+
+clc_part_1_forTEFits_asympt_perf <- clc_part_1_forTEFits_asympt_perf.df %>% 
+  tail(n=50) %>% 
+  dplyr::summarize(aymptotic_perf = median(train_response_distance_idx_med)) %>% 
+  pull(aymptotic_perf)
+
+```
+
+
+
+```{r TEfits-dataset}
+#| echo: false
+#| cache: false
+#| include: false
+
+# Simulation parameters
+n_chains <- 4
+n_cores <- 1
+n_iter <- 200
+
+mod1 <- TEbrm(train_response_distance_idx ~ 
+                tef_change_expo3('trials_train.thisTrialN',
+                                 parForm = ~ condition_str + (1 | Participant_ID), 
+                                 asymForm = clc_part_1_forTEFits_asympt_perf),
+  # the following are all arguments directly to the `brm()` function call:
+  data = clc_part_1_forTEFits.df,
+  family = exgaussian(),
+  chains = n_chains, 
+  cores = n_cores, # At least 2 chains would be necessary for trustworthy inferences
+  iter = n_iter,
+  control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
+)
+
+
+```
+

@@ -1,0 +1,123 @@
+---
+  title: "MOT_Sequence_Target_Density"
+author: "Freya Joessel"
+editor: source
+date: today
+toc: true
+toc-depth: 5
+# toc-expand: true
+number-sections: true
+highlight-style: pygments
+toc-location: left
+reference-location: margin
+citation-location: margin
+format:
+  html: 
+  code-fold: true
+html-math-method: katex
+---
+  
+  
+```{r preamble}
+#| echo: false
+#| include: false
+
+library(dplyr)
+library(progress)
+library(ggplot2)
+library(purrr)
+library(Hmisc)
+library(TEfits)
+library(brms)
+# librarbrms# library(parallel)
+
+```
+
+# Learning rate and starting accuracy 
+
+- Learn faster in the Dark Far condition
+-> Use TEFits, fix asymptote at a criterion for "perfect", one rate and one start for each participant
+-> We know that we're failing to capture some variance linked to the difficulty of the color
+-> EXPLORATORY -> See if models converge when we fit a different model for each color (colors are independent, nested within participants)
+
+```{r TEfits-dataset}
+#| echo: false
+#| cache: false
+#| include: false
+
+
+if(file.exists(file.path("Data", "clc_part_1_forTEFits.rds"))) {
+  clc_part_1_forTEFits.df <- readRDS(file.path("Data", "clc_part_1_forTEFits.rds")) 
+} else {
+  clc_part_1_forTEFits.df <- clc_part_1_only_learners.df %>% 
+    select(Participant_ID, condition_str, sequence_type, color_name, 
+           trials_train.thisTrialN, signed_distance_idx, train_response_correct, 
+           train_response_distance_dE, train_response_distance_idx, cohort)
+  
+  write.csv(clc_part_1_forTEFits.df, file.path("Data", "clc_part_1_forTEFits.csv"))
+  saveRDS(clc_part_1_forTEFits.df, file.path("Data", "clc_part_1_forTEFits.rds"))  
+}
+
+
+```
+
+```{r estimate-asymptotic-performance}
+#| echo: false
+#| cache: false
+#| include: false
+
+clc_part_1_forTEFits_asympt_perf.df <- clc_part_1_forTEFits.df %>% 
+  group_by(trials_train.thisTrialN) %>% 
+  mutate(n_participants_at_trial = n()) %>%
+  ungroup() %>% 
+  filter(n_participants_at_trial >= 10) %>% 
+  group_by(trials_train.thisTrialN) %>% 
+  dplyr::summarize(train_response_distance_idx_med = 
+                     median(train_response_distance_idx), 
+                   .groups = "drop")
+
+clc_part_1_forTEFits_asympt_perf <- clc_part_1_forTEFits_asympt_perf.df %>% 
+  tail(n=50) %>% 
+  dplyr::summarize(aymptotic_perf = median(train_response_distance_idx_med)) %>% 
+  pull(aymptotic_perf)
+
+```
+
+
+
+```{r TEfits-dataset}
+#| echo: false
+#| cache: false
+#| include: false
+
+# Simulation parameters
+n_chains <- 4
+n_cores <- 1
+n_iter <- 200
+
+mod1 <- TEbrm(train_response_distance_idx ~ 
+                tef_change_expo3('trials_train.thisTrialN',
+                                 parForm = ~ condition_str + (1 | Participant_ID), 
+                                 asymForm = clc_part_1_forTEFits_asympt_perf),
+  # the following are all arguments directly to the `brm()` function call:
+  data = clc_part_1_forTEFits.df,
+  family = exgaussian(),
+  chains = n_chains, 
+  cores = n_cores, # At least 2 chains would be necessary for trustworthy inferences
+  iter = n_iter,
+  control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
+)
+
+mod1 <- add_criterion(mod1,'loo',pointwise=T)
+
+mod1$participant_coefficients <- data.frame(coef(mod1)[["Participant_ID"]][,'Estimate',])
+
+mod1$pred_err <- fitted(mod1)
+
+mod1_for_plot.df <- data.frame(
+  trial_num = mod1$data$trials_train.thisTrialN,
+  estimate = mod1$pred_err[,'Estimate'])
+
+ggplot
+
+```
