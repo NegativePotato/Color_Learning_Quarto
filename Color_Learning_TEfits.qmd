@@ -84,40 +84,116 @@ clc_part_1_forTEFits_asympt_perf <- clc_part_1_forTEFits_asympt_perf.df %>%
 ```
 
 
-
-```{r TEfits-dataset}
+```{r TEfits-exp-fit}
 #| echo: false
 #| cache: false
 #| include: false
 
-# Simulation parameters
-n_chains <- 4
-n_cores <- 4
-n_iter <- 10000
+if(file.exists(file.path('Data', 'tefits_exp_model.rds'))) {
+  model_exp <- readRDS(file = file.path('Data', 'tefits_exp_model.rds'))
+} else {
+  # Simulation parameters
+  n_chains <- 4
+  n_cores <- 4
+  n_iter <- 10000
+  
+  # Expoential
+  model_exp <- TEbrm(train_response_distance_idx ~ 
+                  tef_change_expo3('trials_train.thisTrialN',
+                                   parForm = ~ (1 | Participant_ID), 
+                                   startForm = ~ condition_str + (1 | Participant_ID),
+                                   rateForm = ~ condition_str + (1 | Participant_ID),
+                                   asymForm = clc_part_1_forTEFits_asympt_perf),
+    # the following are all arguments directly to the `brm()` function call:
+    data = clc_part_1_forTEFits.df,
+    family = exgaussian(link = "identity"),
+    chains = n_chains, # At least 2 chains would be necessary for trustworthy inferences
+    cores = n_cores, 
+    iter = n_iter, 
+    link_start_asym = "exp",
+    control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
+  )
+  
+  # mod1 <- add_criterion(mod1,'loo',pointwise=T)
+  
+  model_exp$participant_coefficients <- data.frame(coef(model_exp)[["Participant_ID"]][,'Estimate',])
+  
+  model_exp$pred_err <- fitted(model_exp)
+  
+  saveRDS(object = model_exp, file = file.path('Data', 'tefits_exp_model.rds'))
+}
 
-mod1 <- TEbrm(train_response_distance_idx ~ 
-                tef_change_expo3('trials_train.thisTrialN',
-                                 parForm = ~ condition_str + (1 | Participant_ID), 
-                                 asymForm = clc_part_1_forTEFits_asympt_perf),
-  # the following are all arguments directly to the `brm()` function call:
-  data = clc_part_1_forTEFits.df,
-  family = exgaussian(),
-  chains = n_chains, # At least 2 chains would be necessary for trustworthy inferences
-  cores = n_cores, 
-  iter = n_iter,
-  control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
-)
+```
 
-mod1 <- add_criterion(mod1,'loo',pointwise=T)
+```{r TEfits-power-fit}
+#| echo: false
+#| cache: false
+#| include: false
 
-mod1$participant_coefficients <- data.frame(coef(mod1)[["Participant_ID"]][,'Estimate',])
+if(file.exists(file.path('Data', 'tefits_pow_model.rds'))) {
+  model_pow <- readRDS(file = file.path('Data', 'tefits_pow_model.rds'))
+} else {
+  
+  # Simulation parameters
+  n_chains <- 4
+  n_cores <- 4
+  n_iter <- 10000
+  
+  # Power
+  model_pow <- TEbrm(train_response_distance_idx ~ 
+                  tef_change_power3('trials_train.thisTrialN',
+                                    parForm = ~ (1 | Participant_ID), 
+                                    startForm = ~ condition_str + (1 | Participant_ID),
+                                    rateForm = ~ condition_str + (1 | Participant_ID),
+                                    asymForm = clc_part_1_forTEFits_asympt_perf),
+    # the following are all arguments directly to the `brm()` function call:
+    data = clc_part_1_forTEFits.df,
+    family = exgaussian(),
+    chains = n_chains, # At least 2 chains would be necessary for trustworthy inferences
+    cores = n_cores, 
+    iter = n_iter,
+    control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
+  )
+  
+  # mod1 <- add_criterion(mod1,'loo',pointwise=T)
+  
+  model_pow$participant_coefficients <- data.frame(coef(model_pow)[["Participant_ID"]][,'Estimate',])
+  
+  model_pow$pred_err <- fitted(model_pow) # This might take a while to run
+  
+  saveRDS(object = model_pow, file = file.path('Data', 'tefits_pow_model.rds'))
+}
 
-mod1$pred_err <- fitted(mod1)
+```
 
-mod1_for_plot.df <- data.frame(
+```{r TEfits-dataset-plots}
+#| echo: false
+#| cache: false
+#| include: false
+
+model_data_for_plot.df <- data.frame(
+  participant_id = clc_part_1_forTEFits.df$Participant_ID,
+  train_response_distance_idx = clc_part_1_forTEFits.df$train_response_distance_idx,
   trial_num = mod1$data$trials_train.thisTrialN,
-  estimate = mod1$pred_err[,'Estimate'])
+  exp_estimate = model_exp$pred_err[,'Estimate'],
+  exp_q25 = model_exp$pred_err[,'Q2.5'],
+  exp_q975 = model_exp$pred_err[,'Q97.5'],
+  pow_estimate = model_pow$pred_err[,'Estimate'],
+  pow_q25 = model_pow$pred_err[,'Q2.5'],
+  pow_q975 = model_pow$pred_err[,'Q97.5']
+  )
 
-saveRDS(object = mod1, file = file.path('Data', 'tefits_exp_model.rds'))
-
+graph1 <- ggplot() + 
+   geom_point(data = model_data_for_plot.df,
+       aes(x = trial_num,
+           y = train_response_distance_idx), 
+       size = 0.5) +  
+  geom_line(data = model_data_for_plot.df,
+       aes(x = trial_num,
+           y = estimate, 
+           color = participant_id), 
+       show.legend = FALSE) + 
+  theme_bw() + 
+  facet_wrap(. ~ participant_id, scales = "free_x")
+graph1
 ```
