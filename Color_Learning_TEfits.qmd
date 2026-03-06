@@ -97,7 +97,7 @@ if(file.exists(file.path('Data', 'tefits_exp_model.rds'))) {
   n_cores <- 4
   n_iter <- 10000
   
-  # Expoential
+  # Exponential
   model_exp <- TEbrm(train_response_distance_idx ~ 
                   tef_change_expo3('trials_train.thisTrialN',
                                    parForm = ~ (1 | Participant_ID), 
@@ -106,15 +106,13 @@ if(file.exists(file.path('Data', 'tefits_exp_model.rds'))) {
                                    asymForm = clc_part_1_forTEFits_asympt_perf),
     # the following are all arguments directly to the `brm()` function call:
     data = clc_part_1_forTEFits.df,
-    family = exgaussian(link = "identity"),
+    family = exgaussian(),
     chains = n_chains, # At least 2 chains would be necessary for trustworthy inferences
     cores = n_cores, 
     iter = n_iter, 
-    link_start_asym = "exp",
+    refresh = 10,
     control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
   )
-  
-  # mod1 <- add_criterion(mod1,'loo',pointwise=T)
   
   model_exp$participant_coefficients <- data.frame(coef(model_exp)[["Participant_ID"]][,'Estimate',])
   
@@ -174,13 +172,13 @@ if(file.exists(file.path('Data', 'tefits_pow_model.rds'))) {
 model_data_for_plot.df <- data.frame(
   participant_id = clc_part_1_forTEFits.df$Participant_ID,
   train_response_distance_idx = clc_part_1_forTEFits.df$train_response_distance_idx,
-  trial_num = mod1$data$trials_train.thisTrialN,
+  trial_num = model_exp$data$trials_train.thisTrialN,
   exp_estimate = model_exp$pred_err[,'Estimate'],
   exp_q25 = model_exp$pred_err[,'Q2.5'],
-  exp_q975 = model_exp$pred_err[,'Q97.5'],
-  pow_estimate = model_pow$pred_err[,'Estimate'],
-  pow_q25 = model_pow$pred_err[,'Q2.5'],
-  pow_q975 = model_pow$pred_err[,'Q97.5']
+  exp_q975 = model_exp$pred_err[,'Q97.5']
+  # pow_estimate = model_pow$pred_err[,'Estimate'],
+  # pow_q25 = model_pow$pred_err[,'Q2.5'],
+  # pow_q975 = model_pow$pred_err[,'Q97.5']
   )
 
 graph1 <- ggplot() + 
@@ -190,7 +188,7 @@ graph1 <- ggplot() +
        size = 0.5) +  
   geom_line(data = model_data_for_plot.df,
        aes(x = trial_num,
-           y = estimate, 
+           y = exp_estimate, 
            color = participant_id), 
        show.legend = FALSE) + 
   theme_bw() + 
