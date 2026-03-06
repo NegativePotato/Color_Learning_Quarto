@@ -1,5 +1,5 @@
 ---
-  title: "MOT_Sequence_Target_Density"
+title: "Color Learning"
 author: "Freya Joessel"
 editor: source
 date: today
@@ -13,8 +13,8 @@ reference-location: margin
 citation-location: margin
 format:
   html: 
-  code-fold: true
-html-math-method: katex
+    code-fold: true
+    html-math-method: katex
 ---
   
   
