@@ -83,19 +83,29 @@ clc_part_1_forTEFits_asympt_perf <- clc_part_1_forTEFits_asympt_perf.df %>%
 
 ```
 
+Next steps 
+-> Change the family of the distribution to asym_laplace() because the gaussian component of the distribution is too small compared to the exponential component of the distribution which is captured by the long tail 
+
+-> Specify a bounded prior for the rate such we don't get to extreme values
+  nlf(ratePar ~ lowerBound + rateRange*inv_logit(rateParLogit) ) 
+
+  Then
+  rateParLogit ~ my_normal_rate_lmem
 
 ```{r TEfits-exp-fit}
 #| echo: false
 #| cache: false
 #| include: false
 
-if(file.exists(file.path('Data', 'tefits_exp_model.rds'))) {
-  model_exp <- readRDS(file = file.path('Data', 'tefits_exp_model.rds'))
+fname_exp_model <- 'tefits_exp_model_v2.rds'
+
+if(file.exists(file.path('Data', fname_exp_model))) {
+  model_exp <- readRDS(file = file.path('Data', fname_exp_model))
 } else {
   # Simulation parameters
-  n_chains <- 4
-  n_cores <- 4
-  n_iter <- 10000
+  n_chains <- 2
+  n_cores <- 2
+  n_iter <- 2000
   
   # Exponential
   model_exp <- TEbrm(train_response_distance_idx ~ 
@@ -106,20 +116,25 @@ if(file.exists(file.path('Data', 'tefits_exp_model.rds'))) {
                                    asymForm = clc_part_1_forTEFits_asympt_perf),
     # the following are all arguments directly to the `brm()` function call:
     data = clc_part_1_forTEFits.df,
-    family = exgaussian(),
+    family = asym_laplace(),
     chains = n_chains, # At least 2 chains would be necessary for trustworthy inferences
     cores = n_cores, 
     iter = n_iter, 
     refresh = 10,
-    control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
+    control = list(adapt_delta = .7) # this is just to make things run faster, but will lead to worse convergence (.1 to look at the ourput, above .8 for the actual publication)
   )
   
   model_exp$participant_coefficients <- data.frame(coef(model_exp)[["Participant_ID"]][,'Estimate',])
   
   model_exp$pred_err <- fitted(model_exp)
   
-  saveRDS(object = model_exp, file = file.path('Data', 'tefits_exp_model.rds'))
+  saveRDS(object = model_exp, file = file.path('Data', fname_exp_model))
 }
+
+model_exp_actualMedian <- 
+  update(model_exp, 
+         family = asym_laplace(link_quantile = 'identity'), 
+         prior = prior_summary(model_exp) + prior(constant(.5), class = 'quantile') )
 
 ```
 
@@ -175,23 +190,78 @@ model_data_for_plot.df <- data.frame(
   trial_num = model_exp$data$trials_train.thisTrialN,
   exp_estimate = model_exp$pred_err[,'Estimate'],
   exp_q25 = model_exp$pred_err[,'Q2.5'],
-  exp_q975 = model_exp$pred_err[,'Q97.5']
-  # pow_estimate = model_pow$pred_err[,'Estimate'],
-  # pow_q25 = model_pow$pred_err[,'Q2.5'],
-  # pow_q975 = model_pow$pred_err[,'Q97.5']
+  exp_q975 = model_exp$pred_err[,'Q97.5'],
+  pow_estimate = model_pow$pred_err[,'Estimate'],
+  pow_q25 = model_pow$pred_err[,'Q2.5'],
+  pow_q975 = model_pow$pred_err[,'Q97.5']
   )
 
-graph1 <- ggplot() + 
-   geom_point(data = model_data_for_plot.df,
-       aes(x = trial_num,
-           y = train_response_distance_idx), 
-       size = 0.5) +  
-  geom_line(data = model_data_for_plot.df,
-       aes(x = trial_num,
-           y = exp_estimate, 
-           color = participant_id), 
-       show.legend = FALSE) + 
-  theme_bw() + 
-  facet_wrap(. ~ participant_id, scales = "free_x")
-graph1
+make_tefit_plot_with_raw_data <- function(model_data, model_estimate) {
+  tefit_plot <- ggplot() + 
+     geom_point(data = model_data,
+         aes(x = trial_num,
+             y = train_response_distance_idx), 
+         size = 0.5) +  
+    geom_line(data = model_data,
+         aes(x = trial_num,
+             y = {{model_estimate}}, 
+             color = participant_id), 
+         show.legend = FALSE) + 
+    theme_bw() + 
+    facet_wrap(. ~ participant_id, scales = "free_x")  
+  
+  return(tefit_plot)
+}
+
+exp_model.plot <- 
+  make_tefit_plot_with_raw_data(
+    model_data = model_data_for_plot.df,
+    model_estimate = exp_estimate
+    )
+
+power_model.plot <- 
+  make_tefit_plot_with_raw_data(
+    model_data = model_data_for_plot.df,
+    model_estimate = pow_estimate
+    )
+
+ggsave(plot = exp_model.plot, 
+       "Figures/exp_model_v1.png", 
+       width = 20, height = 14)
+
+ggsave(plot = exp_model.plot + xlim(c(0, 200)), 
+       "Figures/exp_model_v1_200_trials.png", 
+       width = 20, height = 14)
+
+ggsave(plot = power_model.plot, 
+       "Figures/pow_model_v1.png", 
+       width = 20, height = 14)
+
+ggsave(plot = power_model.plot + xlim(c(0, 200)), 
+       "Figures/pow_model_v1_200_trials.png", 
+       width = 20, height = 14)
+
 ```
+
+```{r exp-fit-plot-display}
+#| echo: false
+#| fig-cap: "Exponential model fit with raw data for all participants."
+#| cap-location: margin
+#| out.width: "100%"
+#| fig.align: "center"
+#| cache: true
+
+exp_model.plot
+```
+
+```{r pow-fit-plot-display}
+#| echo: false
+#| fig-cap: "Power model fit with raw data for all participants."
+#| cap-location: margin
+#| out.width: "100%"
+#| fig.align: "center"
+#| cache: true
+
+power_model.plot
+```
+
