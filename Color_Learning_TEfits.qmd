@@ -121,7 +121,7 @@ if(file.exists(file.path('Data', fname_exp_model))) {
     cores = n_cores, 
     iter = n_iter, 
     refresh = 10,
-    control = list(adapt_delta = .7) # this is just to make things run faster, but will lead to worse convergence (.1 to look at the ourput, above .8 for the actual publication)
+    control = list(adapt_delta = .1) # this is just to make things run faster, but will lead to worse convergence (.1 to look at the ourput, above .8 for the actual publication)
   )
   
   model_exp$participant_coefficients <- data.frame(coef(model_exp)[["Participant_ID"]][,'Estimate',])
@@ -129,12 +129,13 @@ if(file.exists(file.path('Data', fname_exp_model))) {
   model_exp$pred_err <- fitted(model_exp)
   
   saveRDS(object = model_exp, file = file.path('Data', fname_exp_model))
+  saveRDS(object = model_exp, file = file.path('R:/Projects/Freya/MOT_Project/', fname_exp_model))
 }
 
-model_exp_actualMedian <- 
-  update(model_exp, 
-         family = asym_laplace(link_quantile = 'identity'), 
-         prior = prior_summary(model_exp) + prior(constant(.5), class = 'quantile') )
+# model_exp_actualMedian <- 
+#   update(model_exp, 
+#          family = asym_laplace(link_quantile = 'identity'), 
+#          prior = prior_summary(model_exp) + prior(constant(.5), class = 'quantile') )
 
 ```
 
@@ -143,14 +144,15 @@ model_exp_actualMedian <-
 #| cache: false
 #| include: false
 
-if(file.exists(file.path('Data', 'tefits_pow_model.rds'))) {
-  model_pow <- readRDS(file = file.path('Data', 'tefits_pow_model.rds'))
+fname_pow_model <- 'tefits_pow_model_v2.rds'
+if(file.exists(file.path('Data', fname_pow_model))) {
+  model_pow <- readRDS(file = file.path('Data', fname_pow_model))
 } else {
   
   # Simulation parameters
-  n_chains <- 4
-  n_cores <- 4
-  n_iter <- 10000
+  n_chains <- 2
+  n_cores <- 2
+  n_iter <- 2000
   
   # Power
   model_pow <- TEbrm(train_response_distance_idx ~ 
@@ -165,7 +167,7 @@ if(file.exists(file.path('Data', 'tefits_pow_model.rds'))) {
     chains = n_chains, # At least 2 chains would be necessary for trustworthy inferences
     cores = n_cores, 
     iter = n_iter,
-    control = list(adapt_delta = .9) # this is just to make things run faster, but will lead to worse convergence
+    control = list(adapt_delta = .1) # this is just to make things run faster, but will lead to worse convergence
   )
   
   # mod1 <- add_criterion(mod1,'loo',pointwise=T)
@@ -174,7 +176,8 @@ if(file.exists(file.path('Data', 'tefits_pow_model.rds'))) {
   
   model_pow$pred_err <- fitted(model_pow) # This might take a while to run
   
-  saveRDS(object = model_pow, file = file.path('Data', 'tefits_pow_model.rds'))
+  saveRDS(object = model_pow, file = file.path('Data', fname_pow_model))
+  saveRDS(object = model_exp, file = file.path('R:/Projects/Freya/MOT_Project/', fname_pow_model))
 }
 
 ```
